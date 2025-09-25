@@ -1,3 +1,25 @@
+class VendingMachine:
+    def __init__(self):
+        inventory = []
+
+class Item:
+    def __init__(self, name, price, stock):
+        self.name = name
+        self.price = price
+        self.stock = stock
+
+    def decrement_stock(self):
+        self.stock -= 1
+
+    def get_name(self):
+        return self.name
+
+    def get_price(self):
+        return self.price
+
+    def get_stock(self):
+        return self.stock
+
 class Screen:
     def __init__(self, name):
         self.name = name
@@ -5,9 +27,16 @@ class Screen:
         self.sub_screen = []
         self.selection_screen = False
         self.content = f"self.name: {self.name}"
+        #selection screens shouldn't have sub screens!
+        if self.selection_screen:
+            self.sub_screen.clear()
 
     def start(self):
         pass
+
+    #input is passed here if its a seleciton screen
+    def selection_input(self, user_input):
+        print("beep boop", user_input)
 
     def get_name(self):
         return self.name
@@ -70,6 +99,7 @@ class ScreenManager:
     def go_back(self):
         if self.focus.get_parent_screen():
             self.focus = self.focus.get_parent_screen()
+            self.update_available_screens()
 
     def set_focus(self, screen):
         self.focus = screen
@@ -110,10 +140,13 @@ class Controller(object):
         self.home = Screen("home")
         self.info = Screen("info")
         self.about = Screen("about")
+        self.test_select = Screen("test selection")
+        self.test_select.selection_screen = True
         #set up text
         self.set_screen_content()
         #set up subscreens
         self.home.add_sub_screen(self.info)
+        self.home.add_sub_screen(self.test_select)
         self.info.add_sub_screen(self.about)
         self.set_current_screen(self.home)
 
@@ -122,6 +155,7 @@ class Controller(object):
         self.info.set_content("Select a screen to learn more about this program!")
         self.about.set_content("This is a vending machine that sells food and beverages. It is composed of different "
                                "screens that represent a page of the program!")
+        self.test_select.set_content("Selection and stuff?")
 
     def update_current_screen(self):
         current_screen = self.screen_manager.get_focus()
@@ -138,6 +172,7 @@ class Controller(object):
 
     def go_back(self):
         self.screen_manager.go_back()
+        self.update_current_screen()
 
     def error_output(self, message):
         self.screen_viewer.error_output(message)
@@ -150,12 +185,19 @@ def main():
         q = input("Input: \n> ")
         try:
             q = int(q)
-            screen, message = controller.screen_manager.get_screen_from_index(q)
-            if screen:
-                controller.set_current_screen(screen)
+            current_screen = controller.screen_manager.get_focus()
+            if current_screen.selection_screen:
+                if q == 0:
+                    controller.go_back()
+                else:
+                    current_screen.selection_input(q)
             else:
-                controller.error_output(message)
-                controller.update_current_screen()
+                screen, message = controller.screen_manager.get_screen_from_index(q)
+                if screen:
+                    controller.set_current_screen(screen)
+                else:
+                    controller.error_output(message)
+                    controller.update_current_screen()
         except ValueError:
             controller.error_output("Please enter an integer")
             controller.update_current_screen()
