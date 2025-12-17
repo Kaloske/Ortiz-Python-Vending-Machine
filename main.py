@@ -50,9 +50,9 @@ class VendingMachine:
 
         #check if change is 0
         if change <= 0:
-            message = f"Successfully purchased, {item.name}! No change."
+            message = f"Successfully purchased {item.name.title()}! No change."
         else:
-            message = f"Successfully purchased, {item.name}! AED {bill} inserted and AED {change} in change returned"
+            message = f"Successfully purchased {item.name.title()}! AED {bill:.2f} inserted and AED {change:.2f} in change returned"
 
         return True, new_balance, message
 
@@ -304,12 +304,9 @@ class Controller:
                     self.set_current_screen(previous_screen)
                     return False
 
-    def purchase(self, user_input):
-        #gets information about order before passing it to the vending machine.
+    def purchase(self, user_input, vending_machine):
         # Check if using the input as an index returns an item.
-        current_screen = self.screen_handler.get_current_screen()
-        current_vending_machine = current_screen.vending_machine
-        item, message = current_vending_machine.get_item_from_index(user_input)
+        item, message = vending_machine.get_item_from_index(user_input)
         if not item:
             self.error_output(message)
             self.update_current_screen()
@@ -317,13 +314,13 @@ class Controller:
         #Item is present, do logic
         quantity = self.ask_for_pos_int("quantity")
         bill = self.ask_for_pos_int("bill")
-        success, new_balance, message = current_vending_machine.attempt_purchase(item, quantity, bill, self.user.balance)
+        success, new_balance, message = vending_machine.attempt_purchase(item, quantity, bill, self.user.balance)
         if success:
             #Everything lines up, time to finalize the transaction.
             confirm_prompt= f"Confirm purchase of {quantity}x {item.name} for AED {item.price * quantity:.2f}"
             if self.get_confirmation(confirm_prompt):
                 self.sys_output(message)
-                current_vending_machine.sell_item(item, quantity)
+                vending_machine.sell_item(item, quantity)
                 self.user.add_item(item, quantity)
                 self.user.balance = new_balance
         else:
@@ -357,14 +354,14 @@ def check_int(string):
         return False
 
 def main():
-    #Create user and contrller
+    #Create user and controller
     user = User()
     controller = Controller(user)
 
     #Make our food
-    c_cheetos = Item("flaming hot cheetos", 5, 10)
-    lays_tomato = Item("lays tomato chips", 2.5, 10)
-    lays_spicy = Item("lays spicy chips", 2.5, 10)
+    cheetos = Item("flaming hot cheetos", 5, 10)
+    lays_tomato = Item("lay's tomato chips", 2.5, 10)
+    lays_spicy = Item("lay's spicy chips", 2.5, 10)
     chocolate = Item("chocolate", 10, 10)
     sw_egg = Item("egg sandwich", 15, 10)
     sw_turkey = Item("turkey sandwich", 15, 10)
@@ -378,7 +375,7 @@ def main():
     j_grape = Item("grape juice", 2, 10)
 
     #Add the items to our vending machines
-    controller.add_item(controller.vending_machine, c_cheetos, lays_tomato, lays_spicy, sw_egg, sw_turkey, chocolate)
+    controller.add_item(controller.vending_machine, cheetos, lays_tomato, lays_spicy, sw_egg, sw_turkey, chocolate)
     controller.add_item(controller.bev_vending_machine, cola, sprite, water, redbull, j_apple, j_grape)
 
     while True:
@@ -403,8 +400,10 @@ def main():
         user_input = int(user_input)
 
         #Handle buying if its a buy screen, 0 is used to return so ignore it
-        if type(current_screen) == BuyScreen and user_input != 0:
-            controller.purchase(user_input)
+        if isinstance(current_screen, BuyScreen) and user_input != 0:
+            #buy screen gives you the vending machine.
+            vending_machine = current_screen.vending_machine
+            controller.purchase(user_input, vending_machine)
         else:
             controller.navigate(user_input)
             #If it isn't a buy screen use it to navigate
