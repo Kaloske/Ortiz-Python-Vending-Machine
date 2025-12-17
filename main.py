@@ -4,9 +4,22 @@ class Item:
         self.price = price
         self.stock = stock
 
-class VendingMachine:
-    def __init__(self, balance):
+class User:
+    def __init__(self, balance=100):
         self.balance = balance
+        self.inventory = []
+
+    def add_item(self, item: Item, quantity):
+        for user_item in self.inventory:
+            if user_item.name == item.name:
+                user_item.stock += quantity
+                return
+
+        new_item = Item(item.name, item.price, quantity)
+        self.inventory.append(new_item)
+
+class VendingMachine:
+    def __init__(self):
         self.inventory = []
 
     def add_item(self, items):
@@ -22,17 +35,26 @@ class VendingMachine:
 
     def sell_item(self, item: Item, quantity):
         item.stock -= quantity
-        self.balance -= item.price * quantity
 
-    def attempt_purchase(self, item: Item, quantity):
+    def attempt_purchase(self, item: Item, quantity, bill: int, balance: int):
         order_price = item.price * quantity
         if item.stock < quantity:
-            return False, f"Not enough stock to purchase {item.name}."
-        if order_price > self.balance:
-            return False, f"Not enough balance to purchase {item.name}."
-        self.sell_item(item, quantity)
-        return True, f"Successfully purchased {item.name}!"
+            return False, balance, f"Not enough stock to purchase {item.name}."
+        if bill > balance:
+            return False, balance, f"Not enough balance to insert selected amount."
+        if order_price > bill:
+            return False, balance, f"Inserted amount insufficient to purchase {item.name}."
 
+        change = bill - (item.price * quantity)
+        new_balance = (balance - bill) + change
+
+        #check if change is 0
+        if change <= 0:
+            message = f"Successfully purchased, {item.name}! No change."
+        else:
+            message = f"Successfully purchased, {item.name}! AED {bill} inserted and AED {change} in change returned"
+
+        return True, new_balance, message
 
 class Screen:
     def __init__(self, name):
@@ -41,13 +63,13 @@ class Screen:
         self.sub_screen = []
         self.content = f"self.name: {self.name}"
 
-    def start(self):
-        pass
-
     def add_sub_screen(self, *screens):
         for screen in screens:
             self.sub_screen.append(screen)
             screen.parent_screen = self
+
+    def get_content(self):
+        return self.content
 
 class BuyScreen(Screen):
     def __init__(self, name, vending_machine):
@@ -65,6 +87,28 @@ class InventoryScreen(Screen):
         self.buy_screen = BuyScreen("buy", self.vending_machine)
         self.buy_screen.content = "Enter the item index to purchase it."
         self.add_sub_screen(self.buy_screen)
+
+class ConfirmScreen(Screen):
+    def __init__(self, name):
+        super().__init__(name)
+
+class ExitScreen(Screen):
+    def __init__(self, name):
+        super().__init__(name)
+
+class UserInventory(Screen):
+    def __init__(self, name):
+        super().__init__(name)
+        self.user = None
+
+    def set_user(self, user):
+        self.user = user
+
+    def get_content(self):
+        if not self.user.inventory:
+            return f"Nothing here... maybe you should buy something?"
+        else:
+            return f"Here are the items you've purchased!"
 
 class ScreenManager:
     def __init__(self):
@@ -87,7 +131,7 @@ class ScreenManager:
     def get_screen_from_index(self, index):
         screen = self.available_screens.get(index)
         if not screen:
-            return self.available_screens.get(index), "Invalid Index"
+            return None, "Invalid Index"
         return self.available_screens.get(index), "Success"
 
     def go_to_screen(self, screen):
@@ -106,13 +150,18 @@ class ScreenViewer:
         pass
 
     #displays the content in the screen
-    def display_screen(self, screen):
+    def display_screen(self, screen, balance, inventory):
         print(f"\n[{screen.name.upper()}]")
-        print(screen.content)
+
+        print(screen.get_content())
+
         if isinstance(screen, (BuyScreen, InventoryScreen)):
-            balance = screen.vending_machine.balance
-            print(f"Balance: ${balance:,.2f}")
+            print(f"Balance: AED {balance:,.2f}")
             pass
+
+    def display_confirmation(self):
+            print(f"\t[1]: Yes")
+            print(f"\t[2]: No")
 
     #displays possible routes
     def display_routes(self, sub_screens):
@@ -124,36 +173,48 @@ class ScreenViewer:
                 print(f"\t[{index}]: -> {screen.name.upper()}")
 
     def display_inventory(self, screen):
-        inventory = screen.vending_machine.inventory
-        if type(screen) == BuyScreen:
+        if isinstance(screen, BuyScreen):
+            inventory = screen.vending_machine.inventory
             for i, item in enumerate(inventory, start=1):
-                print(f"[{i}] {item.name.title()}: ${item.price:,.2f} x{item.stock}")
-        else:
+                print(f"[{i}] {item.name.title()}: AED {item.price:,.2f} x{item.stock}")
+        elif isinstance(screen, InventoryScreen):
+            inventory = screen.vending_machine.inventory
             for i, item in enumerate(inventory, start=1):
-                print(f"Item {i}: {item.name.title()}, ${item.price:,.2f}, x{item.stock}")
+                print(f"Item {i}: {item.name.title()}, AED {item.price:,.2f}, x{item.stock}")
+        elif isinstance(screen, UserInventory):
+            inventory = screen.user.inventory
+            for i, item in enumerate(inventory, start=1):
+                print(f"Item {i}: {item.name.title()}, x{item.stock}")
 
     def sys_output(self, message):
-        print(f"{self.prefix}: {message}")
+        print(f"\n{self.prefix}: {message}")
 
     def error_output(self, message):
-        print(f"{self.error_prefix}: {message}")
+        print(f"\n{self.error_prefix}: {message}")
 
     def get_input(self, prompt):
         return input(f"\n{prompt}\n> ")
 
 class ScreenHandler:
-    def __init__(self):
+    def __init__(self, user):
         self.screen_manager = ScreenManager()
         self.screen_viewer = ScreenViewer()
+        self.user = user
 
     def update(self):
         current_screen = self.screen_manager.focus
         sub_screens = self.screen_manager.available_screens
 
-        self.screen_viewer.display_screen(current_screen)
+        #Exit screen doesn't display anything, so we just leave.
+        if isinstance(current_screen, ExitScreen):
+            return
 
-        if isinstance(current_screen, (BuyScreen, InventoryScreen)):
+        self.screen_viewer.display_screen(current_screen, self.user.balance, self.user.inventory)
+
+        if isinstance(current_screen, (BuyScreen, InventoryScreen, UserInventory)):
             self.screen_viewer.display_inventory(current_screen)
+        elif isinstance(current_screen, ConfirmScreen):
+            self.screen_viewer.display_confirmation()
 
         self.screen_viewer.display_routes(sub_screens)
 
@@ -168,31 +229,41 @@ class ScreenHandler:
         self.screen_manager.go_back()
         self.update()
 
-class Controller(object):
-    def __init__(self):
+class Controller:
+    def __init__(self, user):
+        self.user = user
         #prepare components
-        self.screen_handler = ScreenHandler()
-        self.food_vending_machine = VendingMachine(100)
+        self.screen_handler = ScreenHandler(user)
+        self.vending_machine = VendingMachine()
+        self.bev_vending_machine = VendingMachine()
         #create screens
         self.home = Screen("home")
         self.info = Screen("info")
         self.about = Screen("about")
-        self.inventory = InventoryScreen("inventory")
+        self.confirm= ConfirmScreen("confirm")
+        self.inventory = InventoryScreen("food inventory")
+        self.bev_inventory = InventoryScreen("beverage inventory")
+        self.user_inventory = UserInventory("user inventory")
+        self.exit = ExitScreen("exit")
         #set up text
         self.set_screen_content()
         #set up subscreens
-        self.home.add_sub_screen(self.info, self.inventory)
+        self.home.add_sub_screen(self.info, self.inventory, self.bev_inventory, self.user_inventory, self.exit)
         self.info.add_sub_screen(self.about)
         self.set_current_screen(self.home)
         #Set vending machine
-        self.inventory.set_vending_machine(self.food_vending_machine)
+        self.inventory.set_vending_machine(self.vending_machine)
+        self.bev_inventory.set_vending_machine(self.bev_vending_machine)
+        self.user_inventory.set_user(self.user)
 
     def set_screen_content(self):
-        self.home.content = "Welcome! Select a screen!"
+        self.home.content = "Welcome to the Nishie's Vending Machine! Select a screen!"
         self.info.content = "Select a screen to learn more about this program!"
         self.about.content = ("This is a vending machine that sells food and beverages. It is composed of different "
                                "screens that represent a page of the program!")
-        self.inventory.content = "To purchase an item, please select the buy option."
+        self.inventory.content = "To purchase a food item, please select the buy option."
+        self.bev_inventory.content = "To purchase a beverage, please select the buy option."
+        self.user_inventory.content = "These are the products that you have purchased."
 
     def update_current_screen(self):
         self.screen_handler.update()
@@ -212,12 +283,61 @@ class Controller(object):
     def add_item(self, vending_machine, *item):
         vending_machine.add_item(item)
 
-    def buy_item(self, vending_machine, item, quantity):
-        success, message = vending_machine.attempt_purchase(item, quantity)
+    def get_confirmation(self, message = "Confirm"):
+        previous_screen = self.screen_handler.get_current_screen()
+        self.confirm.content = message
+        self.set_current_screen(self.confirm)
+        while True:
+            user_input = self.screen_handler.screen_viewer.get_input("Awaiting Confirmation:")
+
+            if not check_int(user_input):
+                self.error_output("Invalid input.")
+                self.update_current_screen()
+                continue
+
+            match user_input:
+                case "1":
+                    self.set_current_screen(previous_screen)
+                    return True
+
+                case "2":
+                    self.set_current_screen(previous_screen)
+                    return False
+
+    def purchase(self, user_input):
+        #gets information about order before passing it to the vending machine.
+        # Check if using the input as an index returns an item.
+        current_screen = self.screen_handler.get_current_screen()
+        current_vending_machine = current_screen.vending_machine
+        item, message = current_vending_machine.get_item_from_index(user_input)
+        if not item:
+            self.error_output(message)
+            self.update_current_screen()
+            return
+        #Item is present, do logic
+        quantity = self.ask_for_pos_int("quantity")
+        bill = self.ask_for_pos_int("bill")
+        success, new_balance, message = current_vending_machine.attempt_purchase(item, quantity, bill, self.user.balance)
         if success:
-            self.sys_output(message)
+            #Everything lines up, time to finalize the transaction.
+            confirm_prompt= f"Confirm purchase of {quantity}x {item.name} for AED {item.price * quantity:.2f}"
+            if self.get_confirmation(confirm_prompt):
+                self.sys_output(message)
+                current_vending_machine.sell_item(item, quantity)
+                self.user.add_item(item, quantity)
+                self.user.balance = new_balance
         else:
             self.error_output(message)
+
+        self.update_current_screen()
+
+    def navigate(self, user_input):
+        screen, message = self.screen_handler.screen_manager.get_screen_from_index(user_input)
+        if screen:
+            self.set_current_screen(screen)
+        else:
+            self.error_output(message)
+            self.update_current_screen()
 
     def ask_for_pos_int(self, value_name):
         while True:
@@ -229,40 +349,65 @@ class Controller(object):
             except ValueError:
                 self.error_output(f"Invalid input.")
 
+def check_int(string):
+    try:
+        int(string)
+        return True
+    except ValueError:
+        return False
 
 def main():
-    controller = Controller()
-    chips = Item("chips", 20, 10)
-    chocolate = Item("chocolate", 20, 10)
-    controller.add_item(controller.food_vending_machine, chips, chocolate)
+    #Create user and contrller
+    user = User()
+    controller = Controller(user)
+
+    #Make our food
+    c_cheetos = Item("flaming hot cheetos", 5, 10)
+    lays_tomato = Item("lays tomato chips", 2.5, 10)
+    lays_spicy = Item("lays spicy chips", 2.5, 10)
+    chocolate = Item("chocolate", 10, 10)
+    sw_egg = Item("egg sandwich", 15, 10)
+    sw_turkey = Item("turkey sandwich", 15, 10)
+
+    #Make our beverages
+    cola = Item("cola", 2.5, 10)
+    sprite = Item("sprite", 2.5, 10)
+    water = Item("water", 1, 10)
+    redbull = Item("redbull", 10, 10)
+    j_apple = Item("apple juice", 2, 10)
+    j_grape = Item("grape juice", 2, 10)
+
+    #Add the items to our vending machines
+    controller.add_item(controller.vending_machine, c_cheetos, lays_tomato, lays_spicy, sw_egg, sw_turkey, chocolate)
+    controller.add_item(controller.bev_vending_machine, cola, sprite, water, redbull, j_apple, j_grape)
 
     while True:
-        q = controller.screen_handler.screen_viewer.get_input("Awaiting Input:")
-        try:
-            q = int(q)
-            current_screen = controller.screen_handler.get_current_screen()
-            #Handle buying if its a buy screen
-            if type(current_screen) == BuyScreen and q != 0:
-                vending_machine = current_screen.vending_machine
-                item, message = vending_machine.get_item_from_index(q)
-                if item:
-                    quantity = controller.ask_for_pos_int("quantity")
-                    controller.buy_item(vending_machine, item, quantity)
-                    controller.update_current_screen()
-                else:
-                    controller.error_output(message)
-                    controller.update_current_screen()
-            else:
-                #If it isn't a buy screen use it to navigate
-                screen, message = controller.screen_handler.screen_manager.get_screen_from_index(q)
-                if screen:
-                    controller.set_current_screen(screen)
-                else:
-                    controller.error_output(message)
-                    controller.update_current_screen()
-        except ValueError:
+        current_screen = controller.screen_handler.get_current_screen()
+        #Check if we should exit
+        if isinstance(current_screen, ExitScreen):
+            #Confirmation
+            if controller.get_confirmation("Do you really want to leave?"):
+                break
+            #If we aren't exiting go back to home screen
+            #The confirmation screen automatically returns to the previous screen (exit) do it one more time for home.
+            controller.go_back()
+            continue
+
+        user_input = controller.screen_handler.screen_viewer.get_input("Awaiting Input:")
+
+        if not check_int(user_input):
             controller.error_output("Please enter an integer")
             controller.update_current_screen()
+            continue
+
+        user_input = int(user_input)
+
+        #Handle buying if its a buy screen, 0 is used to return so ignore it
+        if type(current_screen) == BuyScreen and user_input != 0:
+            controller.purchase(user_input)
+        else:
+            controller.navigate(user_input)
+            #If it isn't a buy screen use it to navigate
 
 if __name__ == "__main__":
     main()
