@@ -1,5 +1,5 @@
 class Item:
-    def __init__(self, name, price, stock):
+    def __init__(self, name: str, price: float, stock: int):
         self.name = name
         self.price = price
         self.stock = stock
@@ -39,20 +39,20 @@ class VendingMachine:
     def attempt_purchase(self, item: Item, quantity, bill: int, balance: int):
         order_price = item.price * quantity
         if item.stock < quantity:
-            return False, balance, f"Not enough stock to purchase {item.name}."
+            return False, balance, f"Not enough stock to purchase {item.name.upper()}."
         if bill > balance:
             return False, balance, f"Not enough balance to insert selected amount."
         if order_price > bill:
-            return False, balance, f"Inserted amount insufficient to purchase {item.name}."
+            return False, balance, f"Inserted amount insufficient to purchase {item.name.upper()}."
 
         change = bill - (item.price * quantity)
         new_balance = (balance - bill) + change
 
         #check if change is 0
         if change <= 0:
-            message = f"Successfully purchased {item.name.title()}! No change."
+            message = f"Successfully purchased {item.name.upper()}! No change."
         else:
-            message = f"Successfully purchased {item.name.title()}! AED {bill:.2f} inserted and AED {change:.2f} in change returned"
+            message = f"Successfully purchased {item.name.upper()}! AED {bill:.2f} inserted and AED {change:.2f} in change returned."
 
         return True, new_balance, message
 
@@ -131,8 +131,8 @@ class ScreenManager:
     def get_screen_from_index(self, index):
         screen = self.available_screens.get(index)
         if not screen:
-            return None, "Invalid Index"
-        return self.available_screens.get(index), "Success"
+            return None, "Invalid Index."
+        return screen, "Success."
 
     def go_to_screen(self, screen):
         self.focus = screen
@@ -176,15 +176,15 @@ class ScreenViewer:
         if isinstance(screen, BuyScreen):
             inventory = screen.vending_machine.inventory
             for i, item in enumerate(inventory, start=1):
-                print(f"[{i}] {item.name.title()}: AED {item.price:,.2f} x{item.stock}")
+                print(f"[{i}] {item.name.upper()}: AED {item.price:,.2f}, x{item.stock}")
         elif isinstance(screen, InventoryScreen):
             inventory = screen.vending_machine.inventory
             for i, item in enumerate(inventory, start=1):
-                print(f"Item {i}: {item.name.title()}, AED {item.price:,.2f}, x{item.stock}")
+                print(f"Item {i}: {item.name.upper()}, AED {item.price:,.2f}, x{item.stock}")
         elif isinstance(screen, UserInventory):
             inventory = screen.user.inventory
             for i, item in enumerate(inventory, start=1):
-                print(f"Item {i}: {item.name.title()}, x{item.stock}")
+                print(f"Item {i}: {item.name.upper()}, x{item.stock}")
 
     def sys_output(self, message):
         print(f"\n{self.prefix}: {message}")
@@ -313,11 +313,11 @@ class Controller:
             return
         #Item is present, do logic
         quantity = self.ask_for_pos_int("quantity")
-        bill = self.ask_for_pos_int("bill")
+        bill = self.ask_for_pos_float("bill")
         success, new_balance, message = vending_machine.attempt_purchase(item, quantity, bill, self.user.balance)
         if success:
             #Everything lines up, time to finalize the transaction.
-            confirm_prompt= f"Confirm purchase of {quantity}x {item.name} for AED {item.price * quantity:.2f}"
+            confirm_prompt= f"Confirm purchase of {quantity}x {item.name.upper()} for AED {item.price * quantity:.2f}"
             if self.get_confirmation(confirm_prompt):
                 self.sys_output(message)
                 vending_machine.sell_item(item, quantity)
@@ -336,13 +336,23 @@ class Controller:
             self.error_output(message)
             self.update_current_screen()
 
+    def ask_for_pos_float(self, value_name):
+        while True:
+            try:
+                value = float(input(f"Input {value_name}:\n> "))
+                if value > 0:
+                    return value
+                self.error_output(f"Please enter a positive float.")
+            except ValueError:
+                self.error_output(f"Invalid input.")
+
     def ask_for_pos_int(self, value_name):
         while True:
             try:
                 value = int(input(f"Input {value_name}:\n> "))
                 if value > 0:
                     return value
-                self.error_output(f"Please enter a positive integer")
+                self.error_output(f"Please enter a positive integer.")
             except ValueError:
                 self.error_output(f"Invalid input.")
 
@@ -393,7 +403,7 @@ def main():
         user_input = controller.screen_handler.screen_viewer.get_input("Awaiting Input:")
 
         if not check_int(user_input):
-            controller.error_output("Please enter an integer")
+            controller.error_output("Please enter a number.")
             controller.update_current_screen()
             continue
 
